@@ -41,17 +41,14 @@ export const LineChart = () => {
   };
   const [labels, setLabels] = useState(generateRecentTime());
 
-  const getRandomValue = () => faker.number.int({ min: -1000, max: 1000 });
+  const getRandomValue = () => faker.number.int({ min: 0, max: 1000 });
 
   const options = {
     responsive: true,
     plugins: {
-      legend: {
-        position: "top" as const,
-      },
       title: {
         display: true,
-        text: "Keep fake gap",
+        text: "Default",
       },
     },
     parsing: {
@@ -62,8 +59,8 @@ export const LineChart = () => {
 
   const color = ["red", "blue", "green", "black"];
 
-  const [serializedDataSet, setSerializedDataSet] = useState<Array<ChartValue>>(
-    generateRecentTime().map((time) => {
+  const [receiveDataSet, setReceiveDataSet] = useState<Array<ChartValue>>(
+    generateRecentTime(20).map((time) => {
       return {
         name: moment(time).format("mm:ss"),
         value: getRandomValue(),
@@ -71,23 +68,19 @@ export const LineChart = () => {
     })
   );
 
-  const [fakeSet, setFakeSet] = useState<Array<ChartValue>>([]);
-  const [dataSets, setDataSets] = useState([
-    {
-      label: "Real usage",
-      borderColor: "rgb(53, 162, 235)",
-      backgroundColor: "rgba(53, 162, 235, 0.5)",
-      color: "#666",
-      data: serializedDataSet,
-      spanGaps: false,
-    },
-    {
-      label: "Predicted usage",
-      borderColor: "rgb(255, 99, 132)",
-      backgroundColor: "rgba(255, 99, 132, 0.5)",
-      data: [[...serializedDataSet].pop(), ...fakeSet],
-    },
-  ]);
+  const [sentDataSet, setSentDataSet] = useState<Array<ChartValue>>(
+    generateRecentTime(20).map((time) => {
+      return {
+        name: moment(time).format("mm:ss"),
+        value: getRandomValue(),
+      };
+    })
+  );
+
+  const [fakeReceiveDataSet, setFakeReceiveDataSet] = useState<
+    Array<ChartValue>
+  >([]);
+  const [fakeSentDataSet, setFakeSentDataSet] = useState<Array<ChartValue>>([]);
 
   const data = {
     // labels: labels.map((l) => moment(l).format("mm:ss")),
@@ -107,18 +100,30 @@ export const LineChart = () => {
     // ],
     datasets: [
       {
-        label: "Real usage",
-        borderColor: "rgb(53, 162, 235)",
-        backgroundColor: "rgba(53, 162, 235, 0.5)",
-        color: "#666",
-        data: serializedDataSet,
-        spanGaps: false,
+        label: "Kilobytes received",
+        backgroundColor: "#FFF",
+        borderColor: "#DD9200",
+        data: receiveDataSet,
       },
       {
-        label: "Predicted usage",
-        borderColor: "rgb(255, 99, 132)",
-        backgroundColor: "rgba(255, 99, 132, 0.5)",
-        data: [[...serializedDataSet].pop(), ...fakeSet],
+        label: "Predicted Kilobytes received",
+        backgroundColor: "#FFF",
+        borderColor: "#DD9200",
+        data: [[...receiveDataSet].pop(), ...fakeReceiveDataSet],
+        borderDash: [5],
+      },
+      {
+        label: "Kilobytes sent",
+        backgroundColor: "#FFF",
+        borderColor: "#666666",
+        data: sentDataSet,
+      },
+      {
+        label: "Predicted Kilobytes sent",
+        backgroundColor: "#FFF",
+        borderColor: "#666666",
+        data: [[...sentDataSet].pop(), ...fakeSentDataSet],
+        borderDash: [5],
       },
     ],
   };
@@ -130,17 +135,22 @@ export const LineChart = () => {
         value: getRandomValue(),
       };
 
-      if (fakeSet.length === 5) {
-        setSerializedDataSet((prev) => {
+      if (fakeReceiveDataSet.length === 3) {
+        setFakeReceiveDataSet([]);
+        setReceiveDataSet((prev) => {
           return [...prev, newData];
         });
       } else {
-        setFakeSet((prev) => {
+        setFakeReceiveDataSet((prev) => {
+          const clone = [...prev];
+
           return [
             ...prev,
             {
               name: newData.name,
-              value: [...serializedDataSet].pop().value,
+              value: clone.length
+                ? clone.pop().value
+                : [...receiveDataSet].pop().value,
             },
           ];
         });
@@ -150,16 +160,63 @@ export const LineChart = () => {
     return () => {
       clearInterval(interval);
     };
-  }, [fakeSet, serializedDataSet]);
+  }, [fakeReceiveDataSet, receiveDataSet]);
 
-  const handeAddNewPoint = () => {
-    const newData = {
-      name: moment(Date.now()).format("mm:ss"),
-      value: getRandomValue(),
+  useEffect(() => {
+    let interval = setInterval(() => {
+      const newData = {
+        name: moment(Date.now()).format("mm:ss"),
+        value: getRandomValue(),
+      };
+
+      if (fakeSentDataSet.length === 3) {
+        setFakeSentDataSet([]);
+        setSentDataSet((prev) => {
+          return [...prev, newData];
+        });
+      } else {
+        setFakeSentDataSet((prev) => {
+          const clone = [...prev];
+
+          return [
+            ...prev,
+            {
+              name: newData.name,
+              value: clone.length
+                ? clone.pop().value
+                : [...sentDataSet].pop().value,
+            },
+          ];
+        });
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
     };
+  }, [fakeSentDataSet, sentDataSet]);
 
-    setSerializedDataSet((prev) => {
-      return [...prev, newData];
+  const handleAddPoint = () => {
+    setFakeSentDataSet([]);
+    setSentDataSet((prev) => {
+      return [
+        ...prev,
+        {
+          name: moment(Date.now()).format("mm:ss"),
+          value: getRandomValue(),
+        },
+      ];
+    });
+
+    setFakeReceiveDataSet([]);
+    setReceiveDataSet((prev) => {
+      return [
+        ...prev,
+        {
+          name: moment(Date.now()).format("mm:ss"),
+          value: getRandomValue(),
+        },
+      ];
     });
   };
 
@@ -176,7 +233,7 @@ export const LineChart = () => {
         style={{
           display: "flex",
           justifyContent: "center",
-          width: "50vw",
+          width: "80vw",
           height: "100%",
         }}
       >
@@ -190,9 +247,9 @@ export const LineChart = () => {
           padding: 4,
           width: 100,
         }}
-        onClick={handeAddNewPoint}
+        onClick={handleAddPoint}
       >
-        Add value
+        Add point
       </button>
     </div>
   );

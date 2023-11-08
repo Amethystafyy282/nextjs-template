@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,23 +9,30 @@ import {
   Tooltip,
   Legend,
   Colors,
+  TimeScale,
+  ChartOptions,
 } from "chart.js";
+import { CoreScaleOptions, Scale } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { faker } from "@faker-js/faker";
+import annotationPlugin from "chartjs-plugin-annotation";
+import "chartjs-adapter-moment";
 import moment from "moment";
 
 ChartJS.register(
+  annotationPlugin,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  TimeScale
 );
 
 interface ChartValue {
-  name: string;
+  name: Date;
   value: number;
 }
 
@@ -35,23 +42,198 @@ export const LineChartRemovedGap = () => {
 
     return times
       .map((t, i) => {
-        return t - i * 5000;
+        return t - i * 50000;
       })
       .reverse();
   };
-  const [labels, setLabels] = useState(generateRecentTime());
+  const getRandomValue = () => faker.number.int({ min: 0, max: 1000 });
 
-  const getRandomValue = () => faker.number.int({ min: -1000, max: 1000 });
+  const rawReceive = useMemo(
+    () =>
+      generateRecentTime(20).map((time) => {
+        return {
+          name: new Date(time),
+          value: getRandomValue(),
+        };
+      }),
+    []
+  );
 
-  const options = {
+  const [addedReceive, setAddedReceive] = useState<Array<ChartValue>>([]);
+
+  const receives = useMemo(() => {
+    return [...rawReceive, ...addedReceive];
+  }, [rawReceive, addedReceive]);
+
+  const rawSent = useMemo(
+    () =>
+      generateRecentTime(20).map((time) => {
+        return {
+          name: new Date(time),
+          value: getRandomValue(),
+        };
+      }),
+    []
+  );
+
+  const [addedSent, setAddedSent] = useState<Array<ChartValue>>([]);
+
+  const sents = useMemo(() => {
+    return [...rawSent, ...addedSent];
+  }, [rawSent, addedSent]);
+
+  const [fakeReceiveDataSet, setFakeReceiveDataSet] = useState<
+    Array<ChartValue>
+  >([]);
+  const [fakeSentDataSet, setFakeSentDataSet] = useState<Array<ChartValue>>([]);
+
+  const DATE_FORMAT_STRING = "YYYY-MM-DDTHH:mm:ss";
+  const minLocalTime = moment()
+    .subtract(30, "minutes")
+    .format(DATE_FORMAT_STRING);
+  const maxLocalTime = moment()
+    .add(15 + addedSent.length * 4 + fakeSentDataSet.length, "minutes")
+    .format(DATE_FORMAT_STRING);
+  const valueFromTime = Date.parse(minLocalTime);
+  const valueToTime = Date.parse(maxLocalTime);
+
+  const correctScaleInstanceTickTime = (
+    scaleInstance: Scale<CoreScaleOptions>,
+    deltaTimeSecond: number,
+    valueFromTime: number,
+    minutes: number
+  ) => {
+    for (
+      let index = 1;
+      index <= deltaTimeSecond / (minutes * 60) + 1;
+      index += 1
+    ) {
+      scaleInstance.ticks.push({
+        major: false,
+        value: valueFromTime + (index - 1) * minutes * 60 * 1000,
+        label: moment(valueFromTime + (index - 1) * minutes * 60 * 1000).format(
+          "HH:mm"
+        ),
+      });
+    }
+  };
+
+  const options: ChartOptions<"line"> = {
     responsive: true,
-    plugins: {
-      legend: {
-        position: "top" as const,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 0,
+    },
+    clip: { left: 0, top: 5, right: 0, bottom: 5 },
+    elements: {
+      line: {
+        tension: 0.15,
       },
+      point: {
+        backgroundColor: "#8a969c",
+        hoverBackgroundColor: "#8a969c",
+        hoverBorderColor: "#8a969c",
+        radius: 14.5,
+        hoverRadius: 4.5,
+        borderWidth: 0,
+        hoverBorderWidth: 0,
+      },
+    },
+    scales: {
+      x: {
+        afterTickToLabelConversion: (
+          scaleInstance: Scale<CoreScaleOptions>
+        ): void => {
+          scaleInstance.ticks = [];
+          const deltaTimeSecond = (valueToTime - valueFromTime) / 1000;
+          if (deltaTimeSecond > 8 * 60 * 60) {
+            correctScaleInstanceTickTime(
+              scaleInstance,
+              deltaTimeSecond,
+              valueFromTime,
+              60
+            );
+          } else if (deltaTimeSecond > 15 * 60) {
+            correctScaleInstanceTickTime(
+              scaleInstance,
+              deltaTimeSecond,
+              valueFromTime,
+              30
+            );
+          } else {
+            scaleInstance.ticks.push({
+              major: false,
+              value: valueFromTime,
+              label: moment(valueFromTime).format("HH:mm"),
+            });
+            scaleInstance.ticks.push({
+              major: false,
+              value: (valueFromTime + valueToTime) / 2,
+              label: moment((valueFromTime + valueToTime) / 2).format("HH:mm"),
+            });
+            scaleInstance.ticks.push({
+              major: false,
+              value: valueToTime,
+              label: moment(valueToTime).format("HH:mm"),
+            });
+          }
+        },
+        type: "time",
+        min: minLocalTime,
+        max: maxLocalTime,
+        time: {
+          unit: "hour" as const,
+          // stepSize: 0.5,
+          tooltipFormat: "HH:mm",
+          displayFormats: {
+            hour: "HH:mm",
+          },
+        },
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45,
+          color: "rgb(0,0,0,0.6)",
+        },
+        grid: {
+          display: false,
+        },
+      },
+      y: {
+        ticks: {
+          color: "rgb(0,0,0,0.6)",
+        },
+        title: {
+          display: true,
+          text: "Kbps",
+          padding: 4,
+          align: "center" as const,
+          font: {
+            size: 14,
+          },
+        },
+        grid: {
+          display: true,
+          color: "#9999994d",
+        },
+      },
+    },
+    spanGaps: undefined,
+    plugins: {
       title: {
         display: true,
-        text: "Removed fake gap",
+        text: "vEdge Internet usage",
+      },
+      legend: {
+        display: false,
+        position: "top" as const,
+        labels: {
+          color: "rgb(0,0,0,0.6)",
+        },
+      },
+      tooltip: {
+        position: "nearest" as const,
+        caretPadding: 15,
+        titleColor: "white",
       },
     },
     parsing: {
@@ -59,19 +241,6 @@ export const LineChartRemovedGap = () => {
       yAxisKey: "value",
     },
   };
-
-  const color = ["red", "blue", "green", "black"];
-
-  const [serializedDataSet, setSerializedDataSet] = useState<Array<ChartValue>>(
-    generateRecentTime().map((time) => {
-      return {
-        name: moment(time).format("mm:ss"),
-        value: getRandomValue(),
-      };
-    })
-  );
-
-  const [fakeSet, setFakeSet] = useState<Array<ChartValue>>([]);
 
   const data = {
     // labels: labels.map((l) => moment(l).format("mm:ss")),
@@ -91,68 +260,147 @@ export const LineChartRemovedGap = () => {
     // ],
     datasets: [
       {
-        label: "Real usage",
-        borderColor: "rgb(53, 162, 235)",
-        backgroundColor: "rgba(53, 162, 235, 0.5)",
-        color: "#666",
-        data: serializedDataSet,
+        label: "Kilobytes received",
+        backgroundColor: "#FFF",
+        borderColor: "#DD9200",
+        data: receives,
+        borderWidth: 4,
+        pointRadius: 3,
       },
       {
-        label: "Predicted usage",
-        borderColor: "rgb(255, 99, 132)",
-        backgroundColor: "rgba(255, 99, 132, 0.5)",
-        data: [[...serializedDataSet].pop(), ...fakeSet],
-        borderDash: [5],
+        label: "Predicted Kilobytes received",
+        backgroundColor: "#FFF",
+        borderColor: "#DD9200",
+        data: [[...receives].pop(), ...fakeReceiveDataSet],
+        borderDash: [1],
+        borderWidth: 4,
+        pointRadius: 3,
+      },
+      {
+        label: "Kilobytes sent",
+        backgroundColor: "#FFF",
+        borderColor: "#666666",
+        data: sents,
+        borderWidth: 4,
+        pointRadius: 3,
+      },
+      {
+        label: "Predicted Kilobytes sent",
+        backgroundColor: "#FFF",
+        borderColor: "#666666",
+        data: [[...sents].pop(), ...fakeSentDataSet],
+        borderDash: [1],
+        borderWidth: 4,
+        pointRadius: 3,
       },
     ],
   };
 
+  const getFakeDate = (lastValue: Date): Date => {
+    const newDate = new Date(lastValue);
+    newDate.setMinutes(newDate.getMinutes() + 1);
+    return newDate;
+  };
+
   useEffect(() => {
     let interval = setInterval(() => {
-      const newData = {
-        name: moment(Date.now()).format("mm:ss"),
-        value: getRandomValue(),
-      };
+      const lastValue = [...receives, ...fakeReceiveDataSet].pop();
 
-      if (fakeSet.length === 3) {
-        setFakeSet([]);
-        setSerializedDataSet((prev) => {
-          return [...prev, newData];
+      const newDate = getFakeDate(lastValue.name);
+
+      if (fakeReceiveDataSet.length === 3) {
+        setFakeReceiveDataSet([]);
+        setAddedReceive((prev) => {
+          return [
+            ...prev,
+            {
+              name: newDate,
+              value: getRandomValue(),
+            },
+          ];
         });
       } else {
-        setFakeSet((prev) => {
+        setFakeReceiveDataSet((prev) => {
           const clone = [...prev];
 
           return [
             ...prev,
             {
-              name: newData.name,
+              name: newDate,
               value: clone.length
                 ? clone.pop().value
-                : [...serializedDataSet].pop().value,
+                : [...receives].pop().value,
             },
           ];
         });
-        // setSerializedDataSet((prev) => {
-        //   return [...prev, null];
-        // });
       }
     }, 5000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [fakeSet, serializedDataSet]);
+  }, [fakeReceiveDataSet, receives]);
 
-  const handeAddNewPoint = () => {
-    const newData = {
-      name: moment(Date.now()).format("mm:ss"),
-      value: getRandomValue(),
+  useEffect(() => {
+    let interval = setInterval(() => {
+      const lastValue = [...sents, ...fakeSentDataSet].pop();
+
+      const newDate = getFakeDate(lastValue.name);
+
+      if (fakeSentDataSet.length === 3) {
+        setFakeSentDataSet([]);
+        setAddedSent((prev) => {
+          return [
+            ...prev,
+            {
+              name: newDate,
+              value: getRandomValue(),
+            },
+          ];
+        });
+      } else {
+        setFakeSentDataSet((prev) => {
+          const clone = [...prev];
+
+          return [
+            ...prev,
+            {
+              name: newDate,
+              value: clone.length ? clone.pop().value : [...sents].pop().value,
+            },
+          ];
+        });
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
     };
+  }, [fakeSentDataSet, sents]);
 
-    setFakeSet([]);
-    setSerializedDataSet((prev) => {
-      return [...prev, newData];
+  const handleAddPoint = () => {
+    const lastSent = [...sents, ...fakeSentDataSet].pop();
+    const lastReceive = [...receives, ...fakeReceiveDataSet].pop();
+    setFakeSentDataSet([]);
+    setAddedSent((prev) => {
+      return [
+        ...prev,
+        {
+          name: getFakeDate(lastSent.name),
+          value: getRandomValue(),
+        },
+      ];
+    });
+
+    setFakeReceiveDataSet([]);
+    setAddedReceive((prev) => {
+      return [
+        ...prev,
+        {
+          name: getFakeDate(lastReceive.name),
+          value: getRandomValue(),
+        },
+      ];
     });
   };
 
@@ -169,7 +417,7 @@ export const LineChartRemovedGap = () => {
         style={{
           display: "flex",
           justifyContent: "center",
-          width: "50vw",
+          width: "80vw",
           height: "100%",
         }}
       >
@@ -183,9 +431,9 @@ export const LineChartRemovedGap = () => {
           padding: 4,
           width: 100,
         }}
-        onClick={handeAddNewPoint}
+        onClick={handleAddPoint}
       >
-        Add value
+        Add point
       </button>
     </div>
   );
